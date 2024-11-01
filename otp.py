@@ -7,6 +7,48 @@ from PIL import ImageGrab
 from skimage.metrics import structural_similarity as ssim
 
 
+def crop_image(img):
+    # Find the first row with a value >= 100
+    start_row = 0
+    while start_row < img.shape[0] and np.all(img[start_row, :] < 110):
+        start_row += 1
+
+    # Find the last row with a value >= 100
+    end_row = img.shape[0] - 1
+    while end_row >= 0 and np.all(img[end_row, :] < 110):
+        end_row -= 1
+
+    # Find the first column with a value >= 100
+    start_col = 0
+    while start_col < img.shape[1] and np.all(img[:, start_col] < 110):
+        start_col += 1
+
+    # Find the last column with a value >= 100
+    end_col = img.shape[1] - 1
+    while end_col >= 0 and np.all(img[:, end_col] < 110):
+        end_col -= 1
+
+    return img[start_row:end_row + 1, start_col:end_col + 1]
+
+
+def are_images_similar(image1, image2):
+    # Resize images if they are not the same size
+    if image1.shape != image2.shape:
+        image2 = cv2.resize(image2, (image1.shape[1], image1.shape[0]))
+
+    # Calculate SSIM between the two images
+    similarity_index, diff = ssim(image1, image2, full=True)
+    # print(f"SSIM (Structural Similarity Index): {similarity_index:.4f}")
+
+    # Pixel-wise absolute difference
+    pixel_diff = cv2.absdiff(image1, image2)
+    num_diff_pixels = np.sum(pixel_diff > 50)  # Count pixels with significant difference
+    # print(f"Number of significantly different pixels: {num_diff_pixels}")
+
+    # Combined similarity evaluation
+    return similarity_index > 0.8 or num_diff_pixels < 30
+
+
 def sanitize_image(img, img_index):
     screenshot_arr = np.array(img)
 
@@ -38,6 +80,23 @@ def sanitize_image(img, img_index):
             return rotated_image[66:-64, 14:-13, :]
 
 
+def count_entries():
+    conn = sqlite3.connect('db/otp.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(player_name) FROM otp')
+    print(cursor.fetchall()[0][0])
+
+
+def list_names():
+    conn = sqlite3.connect('db/otp.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT player_name FROM otp')
+    rows = cursor.fetchall()
+    for row in rows:
+        print(row[0])
+    conn.close()
+
+
 def scan():
     # List of coordinates for each name position
     names_coordinates = [
@@ -61,12 +120,14 @@ def scan():
             # Convert image to white text on black background
             sanitized_img = sanitize_image(img, i)
             sanitized_img_gray = cv2.cvtColor(sanitized_img, cv2.COLOR_BGR2GRAY)
+            sanitized_img_gray = crop_image(sanitized_img_gray)
 
             # Iterate over database entries and compare images
             for row in rows:
                 player_name, heroes_info, db_image_data, width, height = row
                 db_image_array = np.frombuffer(db_image_data, dtype=np.uint8)
                 db_image = db_image_array.reshape((height, width))
+                db_image = crop_image(db_image)
 
                 # Resize sanitized image if necessary
                 if db_image.shape != sanitized_img_gray.shape:
@@ -74,11 +135,8 @@ def scan():
                 else:
                     sanitized_img_resized = sanitized_img_gray
 
-                # Calculate SSIM between the two images
-                similarity_index, _ = ssim(db_image, sanitized_img_resized, full=True)
-
                 # If the SSIM is above a threshold, consider it a match
-                if similarity_index > 0.9:
+                if are_images_similar(db_image, sanitized_img_resized):
                     print("=======================================================================")
                     print(player_name)
                     print(heroes_info)
@@ -90,7 +148,7 @@ def scan():
 
 
 def add(player_index, player_name, heroes_info_list):
-    img = cv2.imread(str(player_index) + '.png', cv2.IMREAD_GRAYSCALE)
+    img = cv2.imread('images/' + str(player_index) + '.png', cv2.IMREAD_GRAYSCALE)
     img_data = img.tobytes()
 
     # Connect to the database (or create it if it doesn't exist)
@@ -135,6 +193,10 @@ def main():
     add_parser.add_argument("heroes_info", type=str,
                             help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
 
+    subparsers.add_parser("list", help="List all players in the database.")
+
+    subparsers.add_parser("count", help="Count players in the database.")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -150,6 +212,10 @@ def main():
             heroes_info_dict[key.strip()] = value.strip()
 
         add(args.player_index, args.player_name, heroes_info_dict)
+    elif args.command == "list":
+        list_names()
+    elif args.command == "count":
+        count_entries()
 
 
 if __name__ == "__main__":
