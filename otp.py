@@ -154,8 +154,15 @@ def add(player_index, player_name, heroes_info_list):
     # Connect to the database (or create it if it doesn't exist)
     conn = sqlite3.connect('db/otp.db')
     cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(player_name) FROM otp WHERE player_name = ?', (player_name,))
+    count = cursor.fetchone()[0]
+    if count > 0:
+        print(f"Player \"{player_name}\" already exists")
+        conn.commit()
+        conn.close()
+        return
 
-    # Check if the 'otp' table exists, and create it if it doesn't
+        # Check if the 'otp' table exists, and create it if it doesn't
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS otp (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
