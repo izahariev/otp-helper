@@ -46,7 +46,7 @@ def are_images_similar(image1, image2):
     # print(f"Number of significantly different pixels: {num_diff_pixels}")
 
     # Combined similarity evaluation
-    return similarity_index > 0.8 or num_diff_pixels < 30
+    return similarity_index > 0.75 and num_diff_pixels < 45
 
 
 def sanitize_image(img, img_index):
@@ -162,7 +162,7 @@ def add(player_index, player_name, heroes_info_list):
         conn.close()
         return
 
-        # Check if the 'otp' table exists, and create it if it doesn't
+    # Check if the 'otp' table exists, and create it if it doesn't
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS otp (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,23 +186,55 @@ def add(player_index, player_name, heroes_info_list):
     conn.close()
 
 
+def update(player_name, heroes_info_list, replace):
+    conn = sqlite3.connect('db/otp.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT heroes_info FROM otp WHERE player_name = ?', (player_name,))
+    result = cursor.fetchone()
+    if result is None:
+        print(f"Player \"{player_name}\" already exists")
+        conn.commit()
+        conn.close()
+        return
+
+    heroes_info_str = '\n'.join([f"{value} - {key}" for key, value in heroes_info_list.items()])
+    if not replace:
+        heroes_info_str = result[0] + '\n' + heroes_info_str
+    cursor.execute('UPDATE otp SET heroes_info=? WHERE player_name=?', (heroes_info_str, player_name))
+
+    # Commit the changes and close the connection
+    conn.commit()
+    conn.close()
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Image processing program with scan and add options.")
+    parser = argparse.ArgumentParser(description="Image processing program with scan and add options")
     subparsers = parser.add_subparsers(dest="command")
 
     # Scan command
-    subparsers.add_parser("scan", help="Scan images and process them.")
+    subparsers.add_parser("scan", help="Scan images and process them")
 
     # Add command
-    add_parser = subparsers.add_parser("add", help="Add entry to the database.")
+    add_parser = subparsers.add_parser("add", help="Add player to the database")
     add_parser.add_argument("player_index", type=int, help="Player position in the enemy team")
     add_parser.add_argument("player_name", type=str, help="Player name")
     add_parser.add_argument("heroes_info", type=str,
                             help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
 
-    subparsers.add_parser("list", help="List all players in the database.")
+    update_parser = subparsers.add_parser("update", help="Update player in the database. The provided heroes \
+        info will be added to the existing heroes info")
+    update_parser.add_argument("player_name", type=str, help="Player name")
+    update_parser.add_argument("heroes_info", type=str,
+                               help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
 
-    subparsers.add_parser("count", help="Count players in the database.")
+    replace_parser = subparsers.add_parser("replace", help="Replace player hero info in the database")
+    replace_parser.add_argument("player_name", type=str, help="Player name")
+    replace_parser.add_argument("heroes_info", type=str,
+                                help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
+
+    subparsers.add_parser("list", help="List all players in the database")
+
+    subparsers.add_parser("count", help="Count players in the database")
 
     args = parser.parse_args()
 
@@ -219,6 +251,22 @@ def main():
             heroes_info_dict[key.strip()] = value.strip()
 
         add(args.player_index, args.player_name, heroes_info_dict)
+    elif args.command == "update":
+        heroes_info_list = args.heroes_info.split(",")
+        heroes_info_dict = {}
+        for element in heroes_info_list:
+            value, key = element.split("-", 1)
+            heroes_info_dict[key.strip()] = value.strip()
+
+        update(args.player_name, heroes_info_dict, False)
+    elif args.command == "replace":
+        heroes_info_list = args.heroes_info.split(",")
+        heroes_info_dict = {}
+        for element in heroes_info_list:
+            value, key = element.split("-", 1)
+            heroes_info_dict[key.strip()] = value.strip()
+
+        update(args.player_name, heroes_info_dict, True)
     elif args.command == "list":
         list_names()
     elif args.command == "count":
