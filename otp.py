@@ -33,7 +33,7 @@ def crop_image(img):
 
 
 def are_images_similar(image1, image2):
-    # Resize images if they are not the same size
+    # Resize images if they are a different size
     if image1.shape != image2.shape:
         image2 = cv2.resize(image2, (image1.shape[1], image1.shape[0]))
 
@@ -117,8 +117,8 @@ def scan():
     conn.close()
 
     i = 1
-    for coordinates in names_coordinates:
-        with ImageGrab.grab(bbox=(tuple(coordinates))) as img:
+    for left, top, right, bottom in names_coordinates:
+        with ImageGrab.grab(bbox=(left, top, right, bottom)) as img:
             # Convert image to white text on black background
             sanitized_img = sanitize_image(img, i)
             sanitized_img_gray = cv2.cvtColor(sanitized_img, cv2.COLOR_BGR2GRAY)
@@ -147,7 +147,7 @@ def scan():
                         else:
                             print(hero_info)
 
-            # Save image to file system
+            # Save image to the file system
             cv2.imwrite('images/' + str(i) + '.png', sanitized_img)
         i += 1
     print("=======================================================================")
@@ -296,20 +296,23 @@ def main():
     add_parser.add_argument("player_index", type=int, help="Player position in the enemy team")
     add_parser.add_argument("player_name", type=str, help="Player name")
     add_parser.add_argument("heroes_info", type=str,
-                            help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
+                            help="Comma-separated list of heroes info. (ex.: P0-Raynor,P1-Jaina,P0-Hogger)")
 
     update_parser = subparsers.add_parser("update", help="Update player in the database. The provided heroes \
         info will be added to the existing heroes info")
     update_parser.add_argument("player_name", type=str, help="Player name")
     update_parser.add_argument("heroes_info", type=str,
-                               help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
+                               help="Comma-separated list of heroes info. (ex.: P0-Raynor,P1-Jaina,P0-Hogger)")
 
-    replace_heroes_parser = subparsers.add_parser("replace-heroes", help="Replace player hero info in the database")
+    replace_heroes_parser = subparsers.add_parser("replace-heroes",
+                                                  help="Replace player hero info in the database")
     replace_heroes_parser.add_argument("player_name", type=str, help="Player name")
     replace_heroes_parser.add_argument("heroes_info", type=str,
-                                       help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
+                                       help="Comma-separated list of heroes info. \
+                                       (ex.: P0-Raynor,P1-Jaina,P0-Hogger)")
 
-    replace_image_parser = subparsers.add_parser("replace-image", help="Replace player name image in the database")
+    replace_image_parser = subparsers.add_parser("replace-image",
+                                                 help="Replace player name image in the database")
     replace_image_parser.add_argument("player_index", type=int, help="Player position in the enemy team")
     replace_image_parser.add_argument("player_name", type=str, help="Player name")
 
@@ -355,7 +358,7 @@ def main():
 
         update(args.player_name, heroes_info_dict, True)
     elif args.command == "replace-image":
-        update(args.player_index, args.player_name)
+        replace_image(args.player_index, args.player_name)
     elif args.command == "show-name":
         show_player_name_image(args.player_name)
     elif args.command == "list":
