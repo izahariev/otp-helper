@@ -1,5 +1,6 @@
 import argparse
 import sqlite3
+import time
 
 import cv2
 import numpy as np
@@ -42,11 +43,11 @@ def are_images_similar(image1, image2):
 
     # Pixel-wise absolute difference
     pixel_diff = cv2.absdiff(image1, image2)
-    num_diff_pixels = np.sum(pixel_diff > 50)  # Count pixels with significant difference
+    num_diff_pixels = np.sum(pixel_diff > 55)  # Count pixels with significant difference
     # print(f"Number of significantly different pixels: {num_diff_pixels}")
 
     # Combined similarity evaluation
-    return similarity_index > 0.75 and num_diff_pixels < 45
+    return similarity_index > 0.7 and num_diff_pixels < 45
 
 
 def sanitize_image(img, img_index):
@@ -75,7 +76,7 @@ def sanitize_image(img, img_index):
         case 3:
             return rotated_image[68:-60, 12:-14, :]
         case 4:
-            return rotated_image[60:-65, 5:-13, :]
+            return rotated_image[60:-65, 12:-13, :]
         case 5:
             return rotated_image[66:-64, 14:-13, :]
 
@@ -98,6 +99,7 @@ def list_names():
 
 
 def scan():
+    print('Scan')
     # List of coordinates for each name position
     names_coordinates = [
         [1783, 180, 1910, 275],
@@ -137,14 +139,45 @@ def scan():
 
                 # If the SSIM is above a threshold, consider it a match
                 if are_images_similar(db_image, sanitized_img_resized):
-                    print("=======================================================================")
+                    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
                     print(player_name)
-                    print(heroes_info)
-                    print("=======================================================================")
+                    for hero_info in heroes_info.splitlines():
+                        if hero_info.startswith('P0'):
+                            print(f"\033[91m{hero_info}\033[0m")
+                        else:
+                            print(hero_info)
 
             # Save image to file system
             cv2.imwrite('images/' + str(i) + '.png', sanitized_img)
         i += 1
+    print("=======================================================================")
+
+
+def auto_scan():
+    previous_value = 0
+
+    while True:
+        # Take a screenshot of the entire screen
+        screenshot = ImageGrab.grab()
+
+        # Convert the screenshot to a NumPy array
+        screenshot_np = np.array(screenshot)
+
+        # Convert the screenshot to grayscale
+        grayscale_image = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2GRAY)
+
+        # Get the pixel value at row 10 and column 314
+        pixel_value = grayscale_image[10, 314]
+
+        if pixel_value > 150 and previous_value == 98:
+            time.sleep(1)
+            scan()
+
+        # Update the previous value for the next loop iteration
+        previous_value = pixel_value
+
+        # Wait for 1 second before taking another screenshot
+        time.sleep(1)
 
 
 def add(player_index, player_name, heroes_info_list):
@@ -192,7 +225,7 @@ def update(player_name, heroes_info_list, replace):
     cursor.execute('SELECT heroes_info FROM otp WHERE player_name = ?', (player_name,))
     result = cursor.fetchone()
     if result is None:
-        print(f"Player \"{player_name}\" already exists")
+        print(f"Player \"{player_name}\" does not exists")
         conn.commit()
         conn.close()
         return
@@ -207,12 +240,56 @@ def update(player_name, heroes_info_list, replace):
     conn.close()
 
 
+def replace_image(player_index, player_name):
+    img = cv2.imread('images/' + str(player_index) + '.png', cv2.IMREAD_GRAYSCALE)
+    img_data = img.tobytes()
+
+    # Connect to the database (or create it if it doesn't exist)
+    conn = sqlite3.connect('db/otp.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(player_name) FROM otp WHERE player_name = ?', (player_name,))
+    result = cursor.fetchone()
+    if result is None:
+        print(f"Player \"{player_name}\" does not exists")
+        conn.commit()
+        conn.close()
+        return
+
+    cursor.execute('UPDATE otp SET image=? , width=?, height=? WHERE player_name=?',
+                   (sqlite3.Binary(img_data), img.shape[1], img.shape[0], player_name))
+    conn.commit()
+    conn.close()
+
+
+def show_player_name_image(player_name):
+    conn = sqlite3.connect('db/otp.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT image, width, height FROM otp WHERE player_name = ?', (player_name,))
+    result = cursor.fetchone()
+    if result is None:
+        print(f"Player \"{player_name}\" does not exists")
+        conn.commit()
+        conn.close()
+        return
+
+    db_image_data, width, height = result
+    db_image_array = np.frombuffer(db_image_data, dtype=np.uint8)
+    db_image = db_image_array.reshape((height, width))
+    db_image = crop_image(db_image)
+    cv2.imshow('Player name', db_image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Image processing program with scan and add options")
     subparsers = parser.add_subparsers(dest="command")
 
     # Scan command
     subparsers.add_parser("scan", help="Scan images and process them")
+
+    # Auto scan command
+    subparsers.add_parser("auto-scan", help="Scan images and process them automatically")
 
     # Add command
     add_parser = subparsers.add_parser("add", help="Add player to the database")
@@ -227,10 +304,18 @@ def main():
     update_parser.add_argument("heroes_info", type=str,
                                help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
 
-    replace_parser = subparsers.add_parser("replace", help="Replace player hero info in the database")
-    replace_parser.add_argument("player_name", type=str, help="Player name")
-    replace_parser.add_argument("heroes_info", type=str,
-                                help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
+    replace_heroes_parser = subparsers.add_parser("replace-heroes", help="Replace player hero info in the database")
+    replace_heroes_parser.add_argument("player_name", type=str, help="Player name")
+    replace_heroes_parser.add_argument("heroes_info", type=str,
+                                       help="Comma-separated list of heroes info. (ex.: P0-Zul Jin,P1- Cho Gal, P0-Kel'Tuzad)")
+
+    replace_image_parser = subparsers.add_parser("replace-image", help="Replace player name image in the database")
+    replace_image_parser.add_argument("player_index", type=int, help="Player position in the enemy team")
+    replace_image_parser.add_argument("player_name", type=str, help="Player name")
+
+    show_player_name_image_parser = subparsers.add_parser("show-name",
+                                                          help="Show the given player name from the database")
+    show_player_name_image_parser.add_argument("player_name", type=str, help="Player name")
 
     subparsers.add_parser("list", help="List all players in the database")
 
@@ -242,6 +327,8 @@ def main():
         parser.print_help()
     elif args.command == "scan":
         scan()
+    elif args.command == "auto-scan":
+        auto_scan()
     elif args.command == "add":
         # Parse heroes info into a dictionary
         heroes_info_list = args.heroes_info.split(",")
@@ -259,7 +346,7 @@ def main():
             heroes_info_dict[key.strip()] = value.strip()
 
         update(args.player_name, heroes_info_dict, False)
-    elif args.command == "replace":
+    elif args.command == "replace-heroes":
         heroes_info_list = args.heroes_info.split(",")
         heroes_info_dict = {}
         for element in heroes_info_list:
@@ -267,6 +354,10 @@ def main():
             heroes_info_dict[key.strip()] = value.strip()
 
         update(args.player_name, heroes_info_dict, True)
+    elif args.command == "replace-image":
+        update(args.player_index, args.player_name)
+    elif args.command == "show-name":
+        show_player_name_image(args.player_name)
     elif args.command == "list":
         list_names()
     elif args.command == "count":
