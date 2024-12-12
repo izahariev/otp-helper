@@ -156,28 +156,32 @@ def scan():
 def auto_scan():
     previous_value = 0
 
-    while True:
-        # Take a screenshot of the entire screen
-        screenshot = ImageGrab.grab()
+    try:
+        while True:
+            # Take a screenshot of the entire screen
+            screenshot = ImageGrab.grab()
 
-        # Convert the screenshot to a NumPy array
-        screenshot_np = np.array(screenshot)
+            # Convert the screenshot to a NumPy array
+            screenshot_np = np.array(screenshot)
 
-        # Convert the screenshot to grayscale
-        grayscale_image = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2GRAY)
+            # Convert the screenshot to grayscale
+            grayscale_image = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2GRAY)
 
-        # Get the pixel value at row 10 and column 314
-        pixel_value = grayscale_image[10, 314]
+            # Get the pixel value at row 10 and column 314
+            pixel_value = grayscale_image[10, 314]
 
-        if pixel_value > 150 and previous_value == 98:
+            if pixel_value > 150 and previous_value == 98:
+                time.sleep(1)
+                scan()
+
+            # Update the previous value for the next loop iteration
+            previous_value = pixel_value
+
+            # Wait for 1 second before taking another screenshot
             time.sleep(1)
-            scan()
-
-        # Update the previous value for the next loop iteration
-        previous_value = pixel_value
-
-        # Wait for 1 second before taking another screenshot
-        time.sleep(1)
+    except KeyboardInterrupt:
+        print('')
+        pass
 
 
 def add(player_index, player_name, heroes_info_list):
