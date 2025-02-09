@@ -154,7 +154,9 @@ def scan():
 
 
 def auto_scan():
-    previous_value = 0
+    previous_1_value = 0
+    previous_2_value = 0
+    previous_3_value = 0
 
     try:
         while True:
@@ -168,14 +170,22 @@ def auto_scan():
             grayscale_image = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2GRAY)
 
             # Get the pixel value at row 10 and column 314
-            pixel_value = grayscale_image[10, 314]
+            pixel_1_value = grayscale_image[10, 314]
+            pixel_2_value = grayscale_image[11, 314]
+            pixel_3_value = grayscale_image[12, 314]
 
-            if pixel_value > 150 and previous_value == 98:
+            if (
+                    (pixel_1_value > 150 and previous_1_value == 98) and
+                    (pixel_2_value > 150 and previous_2_value == 100) and
+                    (pixel_3_value > 150 and previous_3_value == 100)
+            ):
                 time.sleep(1)
                 scan()
 
             # Update the previous value for the next loop iteration
-            previous_value = pixel_value
+            previous_1_value = pixel_1_value
+            previous_2_value = pixel_2_value
+            previous_3_value = pixel_3_value
 
             # Wait for 1 second before taking another screenshot
             time.sleep(1)
